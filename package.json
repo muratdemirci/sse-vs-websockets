@@ -1,0 +1,34 @@
+{
+  "name": "realtime-benchmark",
+  "version": "1.0.0",
+  "description": "Benchmark comparing Server-Sent Events (SSE) and WebSockets performance",
+  "main": "server/websocket-server.js",
+  "scripts": {
+    "start": "concurrently -n ws,sse,client -c blue,green,magenta \"node server/websocket-server.js\" \"node server/sse-server.js\" \"node server/static-server.js\"",
+    "start:ws": "node server/websocket-server.js",
+    "start:sse": "node server/sse-server.js",
+    "start:static": "node server/static-server.js",
+    "test:ws": "node load-test/client-simulator.js websocket",
+    "test:sse": "node load-test/client-simulator.js sse",
+    "bench:quick": "bash load-test/run-benchmarks.sh quick",
+    "bench:standard": "bash load-test/run-benchmarks.sh standard",
+    "bench:comprehensive": "bash load-test/run-benchmarks.sh comprehensive",
+    "bench:compare": "node load-test/compare-results.js"
+  },
+  "keywords": [
+    "sse",
+    "websocket",
+    "benchmark",
+    "realtime"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "exceljs": "^4.4.0"
+  }
+}
