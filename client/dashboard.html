@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Realtime Benchmark Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 0;
+        padding: 1.5rem;
+        background: #f5f5f5;
+      }
+      h1 {
+        color: #333;
+        margin-bottom: 0.5rem;
+      }
+      .params {
+        background: white;
+        padding: 1rem 1.5rem;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        margin-bottom: 1.5rem;
+        max-width: 800px;
+      }
+      .params label {
+        font-weight: 500;
+        margin-right: 0.5rem;
+      }
+      .params input {
+        padding: 0.4rem 0.8rem;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+        width: 80px;
+        margin-right: 1rem;
+      }
+      .params button {
+        margin-right: 0.5rem;
+      }
+      .panels {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+      }
+      @media (max-width: 900px) {
+        .panels {
+          grid-template-columns: 1fr;
+        }
+      }
+      .panel {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
+      .panel h2 {
+        margin: 0 0 1rem 0;
+        font-size: 1.1rem;
+      }
+      .panel.ws h2 {
+        color: #0066cc;
+      }
+      .panel.sse h2 {
+        color: #28a745;
+      }
+      .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+      }
+      .metric-card {
+        padding: 0.75rem;
+        border-radius: 6px;
+        background: #f8f9fa;
+      }
+      .metric-card .label {
+        font-size: 0.75rem;
+        color: #666;
+      }
+      .metric-card .value {
+        font-size: 1.1rem;
+        font-weight: 600;
+      }
+      .chart-container {
+        height: 200px;
+        margin-bottom: 1rem;
+      }
+      .test-controls {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+      }
+      .btn {
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        border: none;
+        font-size: 0.9rem;
+        font-weight: 500;
+        cursor: pointer;
+      }
+      .btn-primary {
+        background: #0066cc;
+        color: white;
+      }
+      .btn-primary:hover:not(:disabled) {
+        background: #0052a3;
+      }
+      .btn-success {
+        background: #28a745;
+        color: white;
+      }
+      .btn-success:hover:not(:disabled) {
+        background: #218838;
+      }
+      .btn-danger {
+        background: #dc3545;
+        color: white;
+      }
+      .btn-danger:hover:not(:disabled) {
+        background: #c82333;
+      }
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .test-result {
+        margin-top: 0.5rem;
+        padding: 0.75rem;
+        background: #f8f9fa;
+        border-radius: 6px;
+        font-family: monospace;
+        font-size: 0.8rem;
+        white-space: pre-wrap;
+        display: none;
+      }
+      .test-result.visible {
+        display: block;
+      }
+      .test-status {
+        color: #666;
+        font-size: 0.85rem;
+        margin-top: 0.25rem;
+      }
+      .error {
+        color: #c00;
+        font-size: 0.85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Realtime Benchmark Dashboard</h1>
+    <p style="color: #666; margin-top: 0">Metrics update every second</p>
+
+    <div class="params">
+      <label>Clients:</label>
+      <input
+        type="number"
+        id="paramClients"
+        value="1000"
+        min="10"
+        max="10000"
+        step="100"
+      />
+      <label>Duration (sec):</label>
+      <input
+        type="number"
+        id="paramDuration"
+        value="30"
+        min="5"
+        max="120"
+        step="5"
+      />
+      <button class="btn btn-primary" onclick="runTest('websocket')">
+        Run WebSocket
+      </button>
+      <button class="btn btn-success" onclick="runTest('sse')">Run SSE</button>
+      <button class="btn btn-primary" onclick="runBothTests()">Run Both</button>
+    </div>
+
+    <div class="panels">
+      <div class="panel ws">
+        <h2>WebSocket (port 3001)</h2>
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="label">Connections</div>
+            <div class="value" id="ws-connections">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Avg Latency</div>
+            <div class="value" id="ws-avgLatency">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Msg/sec</div>
+            <div class="value" id="ws-messagesPerSecond">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Memory</div>
+            <div class="value" id="ws-memoryUsage">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">CPU</div>
+            <div class="value" id="ws-cpuUsage">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Event Loop Lag</div>
+            <div class="value" id="ws-eventLoopLagMs">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Dropped</div>
+            <div class="value" id="ws-droppedConnections">—</div>
+          </div>
+        </div>
+        <div class="chart-container"><canvas id="chartWs"></canvas></div>
+        <div class="test-controls">
+          <button
+            id="ws-stopBtn"
+            class="btn btn-danger"
+            onclick="stopTest('websocket')"
+            disabled
+          >
+            Stop
+          </button>
+        </div>
+        <div id="ws-testStatus" class="test-status"></div>
+        <div id="ws-testResult" class="test-result"></div>
+      </div>
+
+      <div class="panel sse">
+        <h2>SSE (port 3002)</h2>
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="label">Connections</div>
+            <div class="value" id="sse-connections">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Avg Latency</div>
+            <div class="value" id="sse-avgLatency">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Msg/sec</div>
+            <div class="value" id="sse-messagesPerSecond">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Memory</div>
+            <div class="value" id="sse-memoryUsage">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">CPU</div>
+            <div class="value" id="sse-cpuUsage">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Event Loop Lag</div>
+            <div class="value" id="sse-eventLoopLagMs">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="label">Dropped</div>
+            <div class="value" id="sse-droppedConnections">—</div>
+          </div>
+        </div>
+        <div class="chart-container"><canvas id="chartSse"></canvas></div>
+        <div class="test-controls">
+          <button
+            id="sse-stopBtn"
+            class="btn btn-danger"
+            onclick="stopTest('sse')"
+            disabled
+          >
+            Stop
+          </button>
+        </div>
+        <div id="sse-testStatus" class="test-status"></div>
+        <div id="sse-testResult" class="test-result"></div>
+      </div>
+    </div>
+
+    <script>
+      const WS_URL = "ws://localhost:3001";
+      const SSE_URL = "http://localhost:3002/events";
+      const SSE_LATENCY_URL = "http://localhost:3002/latency";
+      const METRICS_URLS = {
+        websocket: "http://localhost:3001/metrics",
+        sse: "http://localhost:3002/metrics",
+      };
+      const MAX_POINTS = 20;
+
+      function createChart(id, color) {
+        const ctx = document.getElementById(id).getContext("2d");
+        return new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: [],
+            datasets: [
+              {
+                label: "Latency (ms)",
+                data: [],
+                borderColor: color,
+                fill: true,
+                tension: 0.3,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            scales: {
+              y: { beginAtZero: true, suggestedMax: 50 },
+              x: {},
+            },
+          },
+        });
+      }
+
+      const chartWs = createChart("chartWs", "#0066cc");
+      const chartSse = createChart("chartSse", "#28a745");
+
+      const history = {
+        websocket: { labels: [], data: [] },
+        sse: { labels: [], data: [] },
+      };
+
+      const testState = {
+        websocket: {
+          connections: [],
+          abort: null,
+          stats: {
+            connections: 0,
+            messagesReceived: 0,
+            latencies: [],
+            connectionTimes: [],
+          },
+        },
+        sse: {
+          connections: [],
+          abort: null,
+          stats: {
+            connections: 0,
+            messagesReceived: 0,
+            latencies: [],
+            connectionTimes: [],
+          },
+        },
+      };
+
+      function getParams() {
+        return {
+          clientCount:
+            parseInt(document.getElementById("paramClients").value, 10) || 1000,
+          durationSec:
+            parseInt(document.getElementById("paramDuration").value, 10) || 30,
+        };
+      }
+
+      async function fetchMetrics(protocol) {
+        const res = await fetch(METRICS_URLS[protocol]);
+        if (!res.ok) throw new Error("Failed");
+        return res.json();
+      }
+
+      function updatePanel(protocol, metrics) {
+        const p = protocol === "websocket" ? "ws" : "sse";
+        document.getElementById(`${p}-connections`).textContent =
+          metrics.connections;
+        document.getElementById(`${p}-avgLatency`).textContent =
+          (metrics.avgLatency || 0) + "ms";
+        document.getElementById(`${p}-messagesPerSecond`).textContent =
+          metrics.messagesPerSecond ?? "—";
+        const mem = metrics.memoryUsage;
+        document.getElementById(`${p}-memoryUsage`).textContent =
+          mem && typeof mem === "object"
+            ? `heap ${mem.heapMB}MB / rss ${mem.rssMB}MB`
+            : "—";
+        document.getElementById(`${p}-cpuUsage`).textContent =
+          metrics.cpuUsagePercent != null ? metrics.cpuUsagePercent + "%" : "—";
+        document.getElementById(`${p}-eventLoopLagMs`).textContent =
+          metrics.eventLoopLagMs != null ? metrics.eventLoopLagMs + "ms" : "—";
+        document.getElementById(`${p}-droppedConnections`).textContent =
+          metrics.droppedConnections ?? "—";
+
+        const h = history[protocol];
+        if (!h) return;
+        h.labels.push(new Date().toLocaleTimeString());
+        h.data.push(metrics.avgLatency || 0);
+        if (h.labels.length > MAX_POINTS) {
+          h.labels.shift();
+          h.data.shift();
+        }
+
+        const chart = protocol === "websocket" ? chartWs : chartSse;
+        chart.data.labels = [...h.labels];
+        chart.data.datasets[0].data = [...h.data];
+        chart.update();
+      }
+
+      async function tick() {
+        try {
+          const [wsMetrics, sseMetrics] = await Promise.all([
+            fetchMetrics("websocket").catch(() => null),
+            fetchMetrics("sse").catch(() => null),
+          ]);
+          if (wsMetrics) updatePanel("websocket", wsMetrics);
+          if (sseMetrics) updatePanel("sse", sseMetrics);
+        } catch (_) {}
+      }
+
+      function createWSClient() {
+        return new Promise((resolve, reject) => {
+          const start = Date.now();
+          const ws = new WebSocket(WS_URL);
+          const state = testState.websocket;
+
+          ws.onopen = () => {
+            state.stats.connections++;
+            state.stats.connectionTimes.push(Date.now() - start);
+            state.connections.push(ws);
+            resolve(ws);
+          };
+
+          ws.onmessage = (e) => {
+            try {
+              const msg = JSON.parse(e.data);
+              if (msg.timestamp) {
+                const latency = Date.now() - msg.timestamp;
+                state.stats.latencies.push(latency);
+                state.stats.messagesReceived++;
+                if (ws.readyState === WebSocket.OPEN)
+                  ws.send(JSON.stringify({ type: "latency", latency }));
+              }
+            } catch (_) {}
+          };
+
+          ws.onerror = () => reject();
+        });
+      }
+
+      function createSSEClient(abortSignal) {
+        return new Promise((resolve, reject) => {
+          const start = Date.now();
+          const es = new EventSource(SSE_URL);
+          const state = testState.sse;
+
+          es.onopen = () => {
+            state.stats.connections++;
+            state.stats.connectionTimes.push(Date.now() - start);
+            state.connections.push(es);
+            resolve(es);
+          };
+
+          es.onmessage = (e) => {
+            try {
+              const msg = JSON.parse(e.data);
+              if (msg.timestamp) {
+                const latency = Date.now() - msg.timestamp;
+                state.stats.latencies.push(latency);
+                state.stats.messagesReceived++;
+                fetch(SSE_LATENCY_URL, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ latency }),
+                }).catch(() => {});
+              }
+            } catch (_) {}
+          };
+
+          es.onerror = () => {
+            es.close();
+            reject();
+          };
+          if (abortSignal)
+            abortSignal.addEventListener("abort", () => es.close());
+        });
+      }
+
+      async function printResult(protocol) {
+        const state = testState[protocol];
+        const s = state.stats;
+        const latencies = s.latencies;
+        const avg = latencies.length
+          ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)
+          : 0;
+        let min = 0;
+        let max = 0;
+        if (latencies.length > 0) {
+          for (let i = 0; i < latencies.length; i++) {
+            if (i === 0 || latencies[i] < min) min = latencies[i];
+            if (latencies[i] > max) max = latencies[i];
+          }
+        }
+        const avgConn = s.connectionTimes.length
+          ? Math.round(
+              s.connectionTimes.reduce((a, b) => a + b, 0) /
+                s.connectionTimes.length,
+            )
+          : 0;
+
+        let messageRate = "—";
+        try {
+          const m = await fetch(METRICS_URLS[protocol]).then((r) => r.json());
+          messageRate = m.messageRate ?? "—";
+        } catch (_) {}
+
+        const result = `Protocol: ${protocol.toUpperCase()}
+Message rate: ${messageRate} msg/sec
+Connections: ${s.connections}
+Messages: ${s.messagesReceived}
+Avg latency: ${avg}ms | Min: ${min}ms | Max: ${max}ms
+Avg conn time: ${avgConn}ms`;
+
+        document.getElementById(
+          `${protocol === "websocket" ? "ws" : "sse"}-testResult`,
+        ).textContent = result;
+        document
+          .getElementById(
+            `${protocol === "websocket" ? "ws" : "sse"}-testResult`,
+          )
+          .classList.add("visible");
+      }
+
+      async function runTest(protocol) {
+        const { clientCount, durationSec } = getParams();
+        const state = testState[protocol];
+        const prefix = protocol === "websocket" ? "ws" : "sse";
+
+        state.stats = {
+          connections: 0,
+          messagesReceived: 0,
+          latencies: [],
+          connectionTimes: [],
+        };
+        state.connections = [];
+        state.abort = new AbortController();
+
+        document.getElementById(`${prefix}-stopBtn`).disabled = false;
+        document
+          .getElementById(`${prefix}-testResult`)
+          .classList.remove("visible");
+        document.getElementById(`${prefix}-testStatus`).textContent =
+          `Connecting ${clientCount} clients...`;
+
+        try {
+          if (protocol === "websocket") {
+            const batchSize = 50;
+            for (let i = 0; i < clientCount; i += batchSize) {
+              if (state.abort?.signal.aborted) break;
+              const batch = [];
+              for (let j = 0; j < batchSize && i + j < clientCount; j++) {
+                batch.push(createWSClient().catch(() => {}));
+              }
+              await Promise.allSettled(batch);
+              document.getElementById(`${prefix}-testStatus`).textContent =
+                `Connected ${state.stats.connections}/${clientCount}...`;
+              await new Promise((r) => setTimeout(r, 10));
+            }
+          } else {
+            // Browser limits SSE to ~6 HTTP connections per origin - cap and connect in batch
+            const maxSse = Math.min(clientCount, 6);
+            const batch = [];
+            for (let i = 0; i < maxSse; i++) {
+              batch.push(createSSEClient(state.abort?.signal).catch(() => {}));
+            }
+            await Promise.allSettled(batch);
+            document.getElementById(`${prefix}-testStatus`).textContent =
+              `Connected ${state.stats.connections}/${maxSse} (browser limit). Use CLI for more.`;
+          }
+
+          document.getElementById(`${prefix}-testStatus`).textContent =
+            `Running ${durationSec}s...`;
+
+          const startTime = Date.now();
+          const checkInterval = setInterval(() => {
+            if (state.abort?.signal.aborted) {
+              clearInterval(checkInterval);
+              return;
+            }
+            const elapsed = (Date.now() - startTime) / 1000;
+            if (elapsed >= durationSec) {
+              clearInterval(checkInterval);
+              finishTest(protocol);
+            } else {
+              document.getElementById(`${prefix}-testStatus`).textContent =
+                `Running ${Math.round(elapsed)}s / ${durationSec}s (${state.stats.messagesReceived} msgs)`;
+            }
+          }, 500);
+
+          state.abort._interval = checkInterval;
+        } catch (err) {
+          document.getElementById(`${prefix}-testStatus`).textContent =
+            "Error: " + err.message;
+          finishTest(protocol);
+        }
+      }
+
+      async function runBothTests() {
+        await runTest("websocket");
+        await runTest("sse");
+      }
+
+      function stopTest(protocol) {
+        const state = testState[protocol];
+        const prefix = protocol === "websocket" ? "ws" : "sse";
+        if (state.abort) {
+          state.abort.abort();
+          if (state.abort._interval) clearInterval(state.abort._interval);
+        }
+        finishTest(protocol);
+      }
+
+      function finishTest(protocol) {
+        const state = testState[protocol];
+        const prefix = protocol === "websocket" ? "ws" : "sse";
+
+        state.connections.forEach((c) => {
+          if (c.close) c.close();
+          else if (c instanceof WebSocket) c.close();
+        });
+        state.connections = [];
+
+        document.getElementById(`${prefix}-stopBtn`).disabled = true;
+        document.getElementById(`${prefix}-testStatus`).textContent =
+          "Complete.";
+        printResult(protocol).catch(() => {});
+      }
+
+      tick();
+      setInterval(tick, 1000);
+    </script>
+  </body>
+</html>
